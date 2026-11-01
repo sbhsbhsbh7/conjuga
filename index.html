@@ -226,6 +226,20 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .tab{border:2px solid var(--line);background:var(--surface);border-radius:99px;padding:6px 12px;font-weight:700;font-size:.88rem;white-space:nowrap}
 .tab[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .search{width:100%;font:inherit;font-size:16px;padding:10px 12px;border-radius:12px;border:2px solid var(--line);background:var(--surface);color:var(--ink)}
+.qbtn.wide{grid-column:1/-1;border-color:var(--sea);background:var(--sea-soft)}
+.csecs{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.csecs .qbtn:first-child{grid-column:1/-1}
+.words{margin:0;display:flex;flex-direction:column;background:var(--surface);border-radius:12px;overflow:hidden}
+.words>div{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;padding:9px 12px}
+.words>div+div{border-top:1px solid var(--surface-2)}
+.words dt{font-weight:700;color:var(--leaf)}
+.words dd{margin:0;color:var(--muted);font-size:.92rem}
+.tline{list-style:none;margin:0;padding:0 0 0 18px;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:14px}
+.tline li{position:relative;display:flex;flex-direction:column;gap:2px}
+.tline li::before{content:"";position:absolute;left:-25px;top:4px;width:10px;height:10px;border-radius:50%;background:var(--leaf);border:2px solid var(--bg)}
+.tline strong{font-family:var(--display);font-size:.95rem;font-weight:600}
+.tline p{margin:0;font-size:.88rem}
+@media (max-width:420px){.words>div{grid-template-columns:1fr;gap:2px}.csecs{grid-template-columns:1fr}}
 .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.85rem;color:var(--muted)}
 
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
@@ -236,6 +250,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 <div id="app"></div>
 <div id="fx" class="confetti" aria-hidden="true"></div>
 
+<script src="./carnet.js"></script>
 <script>
 "use strict";
 /* ========== Données verbales ========== */
@@ -633,6 +648,8 @@ function route(){
   if(h==="express"){ if(!SES||SES.mode!=="express") startExpress(true); return renderQuiz(); }
   if(h==="bilan" && SES && SES.done) return renderResult();
   if(h==="tableaux") return renderRef();
+  if(hasCarnet && h==="carnet") return renderCarnet();
+  if(hasCarnet && (m=h.match(/^carnet-([a-z]+)$/))) return renderCarnetSection(m[1]);
   SES=null; renderHome();
 }
 window.addEventListener("hashchange",route);
@@ -669,6 +686,7 @@ function renderHome(){
     <div class="quick">
       <button class="qbtn" data-go="revision"><strong>Révision du jour</strong><small>Tes erreurs + un peu de tout</small>${reviewCount()?`<span class="pill">${reviewCount()} à revoir</span>`:""}</button>
       <button class="qbtn" data-go="express"><strong>Express</strong><small>10 formes au hasard, sans phrase</small></button>
+      ${hasCarnet?`<button class="qbtn wide" data-go="carnet"><strong>Mon carnet avec Hugo</strong><small>Grammaire, expressions, vocabulaire et culture de mes 41 cours</small></button>`:""}
     </div>
   </header>
   <section class="path">
@@ -1012,6 +1030,57 @@ function renderRef(){
   </div>`;
 }
 
+/* ========== Carnet Hugo (données dans carnet.js) ========== */
+const hasCarnet = typeof CARNET!=="undefined";
+let carnetFilter="";
+function sayLine(pt){return spk(pt.replace(/\s—\s.*/,"").replace(/[\/…]/g," "))||"<span></span>";}
+function carnetBlock(b){
+  if(b.h) return `<h2>${esc(b.h)}</h2>`;
+  if(b.p) return `<p>${b.p}</p>`;
+  if(b.tip) return `<div class="tip blue"><b>${esc(b.tip)}</b>${esc(b.txt)}</div>`;
+  if(b.ex) return `<div class="exs">${b.ex.map(([pt,fr])=>`<div class="exl">${sayLine(pt)}<div><div class="pt">${esc(pt)}</div><div class="fr">${esc(fr)}</div></div></div>`).join("")}</div>`;
+  if(b.words) return `<dl class="words">${b.words.map(([pt,fr])=>`<div><dt>${esc(pt)}</dt><dd>${esc(fr)}</dd></div>`).join("")}</dl>`;
+  if(b.tbl) return `<div class="ends"><table><thead><tr>${b.tbl.head.map(h=>`<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${b.tbl.rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+  return "";
+}
+function carnetHits(q){
+  const n=s=>s.normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+  const k=n(q.trim()); if(k.length<2) return null;
+  const hits=[];
+  CARNET.forEach(s=>{let h="";s.blocks.forEach(b=>{if(b.h)h=b.h;(b.ex||b.words||[]).forEach(([pt,fr])=>{if(n(pt+" "+fr).includes(k))hits.push({s,h,pt,fr});});});});
+  return hits;
+}
+function carnetResults(){
+  const hits=carnetHits(carnetFilter); if(!hits) return "";
+  if(!hits.length) return `<p class="muted">Rien trouvé pour « ${esc(carnetFilter)} ».</p>`;
+  return `<div class="exs">${hits.slice(0,60).map(x=>`<div class="exl">${sayLine(x.pt)}<div><div class="pt">${esc(x.pt)}</div><div class="fr">${esc(x.fr)}</div><div class="label" style="margin-top:4px">${esc(x.s.title)} · ${esc(x.h)}</div></div></div>`).join("")}</div>`;
+}
+function renderCarnet(){
+  app().innerHTML=`
+  <div class="bar"><button class="x" data-go="accueil" aria-label="Retour à l'accueil">${IC.x}</button><span class="label" style="flex:1">Mon carnet avec Hugo</span></div>
+  <div class="lesson">
+    <div><span class="label">Cours sur Preply · depuis septembre 2025</span><h1 style="font-size:1.6rem;margin-top:4px">Tout ce que j'ai appris</h1></div>
+    <input class="search" id="carq" type="search" placeholder="Chercher un mot (portugais ou français)" value="${esc(carnetFilter)}" aria-label="Chercher dans le carnet">
+    <div id="carres">${carnetResults()}</div>
+    <div class="csecs">${CARNET.map(s=>`<button class="qbtn" data-go="carnet-${s.id}"><strong>${esc(s.title)}</strong><small>${esc(s.sub)}</small></button>`).join("")}</div>
+    <h2>Le parcours</h2>
+    <ol class="tline">${CARNET_PARCOURS.map(p=>`<li><span class="label">${esc(p.u)} · ${esc(p.a)} · ${esc(p.d)}</span><strong>${esc(p.t)}</strong>${p.s?`<p class="muted">${esc(p.s)}</p>`:""}</li>`).join("")}</ol>
+  </div>`;
+}
+function renderCarnetSection(id){
+  const i=CARNET.findIndex(s=>s.id===id); if(i<0) return go("carnet");
+  const s=CARNET[i], nx=CARNET[i+1];
+  app().innerHTML=`
+  <div class="bar"><button class="x" data-go="carnet" aria-label="Retour au carnet">${IC.x}</button><span class="label" style="flex:1">Carnet · ${esc(s.title)}</span></div>
+  <article class="lesson">
+    <div><span class="label">${esc(s.sub)}</span><h1 style="font-size:1.6rem;margin-top:4px">${esc(s.title)}</h1></div>
+    ${canSpeak?`<p class="muted" style="font-size:.9rem">Touche ${IC.spk.replace('width="16" height="16"','width="13" height="13"')} pour entendre la prononciation brésilienne.</p>`:""}
+    ${s.blocks.map(carnetBlock).join("")}
+    ${nx?`<button class="cta" data-go="carnet-${nx.id}">Suite : ${esc(nx.title)}</button>`:""}
+    <button class="linkbtn" style="text-align:center" data-go="carnet">Retour au sommaire du carnet</button>
+  </article>`;
+}
+
 /* ========== Événements ========== */
 document.addEventListener("click",e=>{
   const s=e.target.closest("[data-say]"); if(s){ speak(s.dataset.say); return; }
@@ -1037,6 +1106,7 @@ let lastCell=null;
 document.addEventListener("focusin",e=>{ if(e.target.dataset&&e.target.dataset.cell!==undefined) lastCell=e.target; });
 document.addEventListener("pointerdown",e=>{ if(e.target.closest("[data-ins]")) e.preventDefault(); });
 document.addEventListener("input",e=>{
+  if(e.target.id==="carq"){ carnetFilter=e.target.value; $("#carres").innerHTML=carnetResults(); }
   if(e.target.id==="refq"){ refFilter=e.target.value; const pos=e.target.selectionStart; renderRef(); const q_=$("#refq"); q_.focus(); q_.setSelectionRange(pos,pos); }
   if(e.target.id==="ans"&&IS) IS.last=e.target.value;
   if(e.target.dataset&&e.target.dataset.cell!==undefined&&IS&&IS.cells) IS.cells[+e.target.dataset.cell]=e.target.value;
